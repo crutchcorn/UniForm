@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   render,
   waitFor,
@@ -615,4 +615,186 @@ test("Field array item should not be dirty when form reset", async () => {
   await user.click(getByText("Reset"));
 
   expect(getByText("Clean")).toBeInTheDocument();
+});
+
+test("Removing nested field array items", async () => {
+  const mockedSubmit = vi.fn();
+
+  const mockData = [
+    {
+      name: "Bob",
+      children: [{ name: "Sally", toys: [{ name: "Ball" }] }],
+    },
+    {
+      name: "Joe",
+      children: [
+        { name: "Sue", toys: [{ name: "Car" }] },
+        { name: "John", toys: [{ name: "Dinosaur" }] },
+      ],
+    },
+  ];
+
+  const { getByText } = render(
+    <Form
+      onSubmit={(values) => {
+        mockedSubmit(values);
+      }}
+    >
+      {({ submit }) => (
+        <>
+          <FieldArray name={"people"} initialValue={mockData}>
+            {({ value, remove: removePerson }) => (
+              <>
+                {value.map((person, personIndex) => (
+                  <FieldArrayItem
+                    key={`person-${personIndex}`}
+                    name={`people[${personIndex}].name`}
+                  >
+                    {({ value }) => (
+                      <div>
+                        <h1>Person: {value}</h1>
+                        <button onClick={() => removePerson(personIndex)}>
+                          Remove person {value}
+                        </button>
+                        <FieldArray
+                          name={`people[${personIndex}].children`}
+                          initialValue={person.children}
+                        >
+                          {({ value, remove: removeChild }) => (
+                            <>
+                              {value.map((child, childIndex) => (
+                                <FieldArrayItem
+                                  key={`child-${childIndex}`}
+                                  name={`people[${personIndex}].children[${childIndex}].name`}
+                                  initialValue={child.name}
+                                >
+                                  {({ value }) => (
+                                    <div>
+                                      <h2>Child: {value}</h2>
+                                      <button
+                                        onClick={() => removeChild(childIndex)}
+                                      >
+                                        Delete child {value}
+                                      </button>
+
+                                      <FieldArray
+                                        name={`people[${personIndex}].children[${childIndex}].toys`}
+                                        initialValue={child.toys}
+                                      >
+                                        {({ value, remove: removeToy }) => (
+                                          <>
+                                            {value.map((toy, toyIndex) => (
+                                              <FieldArrayItem
+                                                key={`toy-${toyIndex}`}
+                                                name={`people[${personIndex}].children[${childIndex}].toys[${toyIndex}].name`}
+                                                initialValue={toy.name}
+                                              >
+                                                {({ value }) => (
+                                                  <div>
+                                                    <p>Toy: {value}</p>
+                                                    <button
+                                                      onClick={() =>
+                                                        removeToy(toyIndex)
+                                                      }
+                                                    >
+                                                      Delete toy {value}
+                                                    </button>
+                                                  </div>
+                                                )}
+                                              </FieldArrayItem>
+                                            ))}
+                                          </>
+                                        )}
+                                      </FieldArray>
+                                    </div>
+                                  )}
+                                </FieldArrayItem>
+                              ))}
+                            </>
+                          )}
+                        </FieldArray>
+                      </div>
+                    )}
+                  </FieldArrayItem>
+                ))}
+              </>
+            )}
+          </FieldArray>
+          <button onClick={submit}>Submit</button>
+        </>
+      )}
+    </Form>
+  );
+
+  const buttonSubmit = getByText("Submit");
+
+  expect(getByText("Person: Bob")).toBeInTheDocument();
+  expect(getByText("Person: Joe")).toBeInTheDocument();
+
+  expect(getByText("Child: Sally")).toBeInTheDocument();
+  expect(getByText("Child: Sue")).toBeInTheDocument();
+  expect(getByText("Child: John")).toBeInTheDocument();
+
+  await user.click(buttonSubmit);
+
+  expect(mockedSubmit).toHaveBeenCalledWith({
+    people: mockData,
+  });
+
+  await user.click(getByText("Delete child Sally"));
+  await user.click(buttonSubmit);
+
+  expect(mockedSubmit).toHaveBeenCalledWith({
+    people: [
+      {
+        name: "Bob",
+        children: [],
+      },
+      {
+        name: "Joe",
+        children: [
+          { name: "Sue", toys: [{ name: "Car" }] },
+          { name: "John", toys: [{ name: "Dinosaur" }] },
+        ],
+      },
+    ],
+  });
+
+  await user.click(getByText("Delete toy Car"));
+  await user.click(buttonSubmit);
+
+  expect(mockedSubmit).toHaveBeenCalledWith({
+    people: [
+      {
+        name: "Bob",
+        children: [],
+      },
+      {
+        name: "Joe",
+        children: [
+          { name: "Sue", toys: [] },
+          { name: "John", toys: [{ name: "Dinosaur" }] },
+        ],
+      },
+    ],
+  });
+
+  await user.click(getByText("Remove person Joe"));
+  await user.click(buttonSubmit);
+
+  expect(mockedSubmit).toHaveBeenCalledWith({
+    people: [
+      {
+        name: "Bob",
+        children: [],
+      },
+    ],
+  });
+
+  await user.click(getByText("Remove person Bob"));
+  await user.click(buttonSubmit);
+
+  expect(mockedSubmit).toHaveBeenCalledWith({
+    people: [],
+  });
 });
